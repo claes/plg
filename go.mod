@@ -1,4 +1,4 @@
-module github.com/claes/playlistgenerator
+module github.com/claes/plg
 
 go 1.16
 
