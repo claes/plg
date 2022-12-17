@@ -68,13 +68,13 @@ func parseStanzas(filename string, destinationDir string) {
 
 					svtRegex := regexp.MustCompile(`www.svtplay.se\/(.*)\/rss\.xml`)
 					svtMatches := svtRegex.FindStringSubmatch(url)
-					channelRegex := regexp.MustCompile(`www.youtube.com\/channel\/(.*)`)
+					channelRegex := regexp.MustCompile(`youtube.com\/channel\/(.*)`)
 					channelMatches := channelRegex.FindStringSubmatch(url)
-					userRegex := regexp.MustCompile(`www.youtube.com\/user\/(.*)`)
+					userRegex := regexp.MustCompile(`youtube.com\/user\/(.*)`)
 					userMatches := userRegex.FindStringSubmatch(url)
-					playlistRegex := regexp.MustCompile(`www.youtube.com\/playlist\?list=(.*)`)
+					playlistRegex := regexp.MustCompile(`youtube.com\/playlist\?list=(.*)`)
 					playlistMatches := playlistRegex.FindStringSubmatch(url)
-					cRegex := regexp.MustCompile(`www.youtube.com\/c\/(.*)`) //Doesn't work. Need a way to figure out channel id in this case
+					cRegex := regexp.MustCompile(`youtube.com\/c\/(.*)`) //Doesn't work. Need a way to figure out channel id in this case
 					cMatches := cRegex.FindStringSubmatch(url)
 					// /itemprop="channelId" content="(.*?)"/ and print $1
 					title = strings.Trim(title, " .")
