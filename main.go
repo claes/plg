@@ -279,6 +279,14 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		return err
 	}
 	dirTime := dirStat.ModTime()
+
+	baseDir := destinationDir + "/" + prefix + "/"
+	baseDirStat, err := os.Stat(baseDir)
+	if err != nil {
+		return err
+	}
+	baseDirTime := baseDirStat.ModTime()
+
 	for _, item := range playlist {
 
 		title := item.title
@@ -334,6 +342,9 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			}
 			w.Flush()
 
+			if baseDirTime.Before(item.time) {
+				baseDirTime = item.time
+			}
 			if dirTime.Before(item.time) {
 				dirTime = item.time
 			}
@@ -350,6 +361,10 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 	err = os.Chtimes(dir, dirTime, dirTime)
 	if err != nil {
 		fmt.Printf("Could not change mtime of %s: %v\n", dir, err)
+	}
+	err = os.Chtimes(baseDir, baseDirTime, baseDirTime)
+	if err != nil {
+		fmt.Printf("Could not change mtime of %s: %v\n", baseDir, err)
 	}
 	return nil
 }
