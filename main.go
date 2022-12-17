@@ -122,7 +122,7 @@ func parseAndWritePlaylists(title string, url string, destinationDir string, pre
 			fmt.Println("Writing playlist for: ", title)
 			err := writePlaylist(destinationDir, prefix, title, playlist)
 			if err != nil {
-				fmt.Errorf("Error while writing playlist for %s;  %v", playlist, err)
+				fmt.Errorf("Error while writing playlist for %v;  %v", playlist, err)
 			}
 		}
 
@@ -273,6 +273,12 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		return err
 	}
 	fmt.Printf("Created directory %s. Will now create %d playlist items.\n", dir, len(playlist))
+
+	dirStat, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	dirTime := dirStat.ModTime()
 	for _, item := range playlist {
 
 		title := item.title
@@ -327,6 +333,10 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 				return err
 			}
 			w.Flush()
+
+			if dirTime.Before(item.time) {
+				dirTime = item.time
+			}
 		}
 		err = os.Chtimes(strmfile, item.time, item.time)
 		if err != nil {
@@ -336,6 +346,10 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		if err != nil {
 			fmt.Printf("Could not change mtime of %s: %v\n", nfofile, err)
 		}
+	}
+	err = os.Chtimes(dir, dirTime, dirTime)
+	if err != nil {
+		fmt.Printf("Could not change mtime of %s: %v\n", dir, err)
 	}
 	return nil
 }
