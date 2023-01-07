@@ -17,13 +17,14 @@ import (
 )
 
 type PlaylistItem struct {
-	title       string
-	sorttitle   string
-	description string
-	author      string
-	iconUrl     string
-	url         string
-	time        time.Time
+	title        string
+	sorttitle    string
+	description  string
+	author       string
+	iconUrl      string
+	url          string
+	recursiveUrl string
+	time         time.Time
 }
 
 var channels map[string]string
@@ -161,6 +162,7 @@ func parseFeed(url string) (string, []PlaylistItem) {
 				channels[channelId] = feed.Title
 			}
 		*/
+
 	}
 
 	playlist := make([]PlaylistItem, 0)
@@ -218,7 +220,7 @@ func parseFeed(url string) (string, []PlaylistItem) {
 			time = *item.UpdatedParsed
 		}
 
-		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, time}
+		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, item.Link, time}
 		playlist = append(playlist, playlistItem)
 		fmt.Printf("%s %s \n", playlistItem.title, playlistItem.url)
 	}
@@ -356,6 +358,14 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		err = os.Chtimes(nfofile, item.time, item.time)
 		if err != nil {
 			fmt.Printf("Could not change mtime of %s: %v\n", nfofile, err)
+		}
+
+		svtProgramRegex := regexp.MustCompile(`www.svtplay.se\/([^\/]+)$`)
+		svtProgramRegexMatches := svtProgramRegex.FindStringSubmatch(item.recursiveUrl)
+		if len(svtProgramRegexMatches) > 0 {
+			svtProgram := svtProgramRegexMatches[1]
+			programPrefix := prefix + "/" + n
+			parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtProgram), destinationDir, programPrefix)
 		}
 	}
 	err = os.Chtimes(dir, dirTime, dirTime)
