@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -16,6 +17,16 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+type Dms struct {
+	Title     string        `json:"Title"`
+	Resources []DmsResource `json:"Resources"`
+}
+
+type DmsResource struct {
+	MimeType string `json:"MimeType"`
+	Command  string `json:"Command"`
+}
+
 type PlaylistItem struct {
 	title        string
 	sorttitle    string
@@ -23,6 +34,7 @@ type PlaylistItem struct {
 	author       string
 	iconUrl      string
 	url          string
+	id           string
 	recursiveUrl string
 	time         time.Time
 }
@@ -171,11 +183,12 @@ func parseFeed(url string) (string, []PlaylistItem) {
 		fmt.Printf("Item: %s ; %s ; %s ; %s ; %v", item.PublishedParsed, item.UpdatedParsed, item.Published, item.Updated, item)
 
 		url := ""
-
+		id := ""
 		r := regexp.MustCompile(`www.youtube.com\/watch\?v=(.*)`)
 		matches := r.FindStringSubmatch(item.Link)
 		if len(matches) > 0 {
-			url = "plugin://plugin.video.youtube/play/?video_id=" + matches[1]
+			id = matches[1]
+			url = "plugin://plugin.video.youtube/play/?video_id=" + id
 		} else {
 			r := regexp.MustCompile(`www.svtplay.se(\/.*)`)
 			matches := r.FindStringSubmatch(item.Link)
@@ -220,7 +233,7 @@ func parseFeed(url string) (string, []PlaylistItem) {
 			time = *item.UpdatedParsed
 		}
 
-		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, item.Link, time}
+		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, id, item.Link, time}
 		playlist = append(playlist, playlistItem)
 		fmt.Printf("%s %s \n", playlistItem.title, playlistItem.url)
 	}
@@ -299,6 +312,8 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		title = strings.Replace(title, ":", "", -1)
 		strmfile := dir + title + ".strm"
 		nfofile := dir + title + ".nfo"
+		dmsfile := dir + title + ".dms.json"
+
 		{
 			// Stream
 			strm, err := os.Create(strmfile)
@@ -339,6 +354,31 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 				item.title, item.sorttitle, item.description, item.iconUrl, tag)
 			_, err = w.WriteString(s)
 
+			if err != nil {
+				return err
+			}
+			w.Flush()
+
+			//DMS
+			dms, err := os.Create(dmsfile)
+			if err != nil {
+				return err
+			}
+			defer dms.Close()
+			defer os.Chtimes(dmsfile, item.time, item.time)
+
+			w = bufio.NewWriter(dms)
+			if err != nil {
+				return err
+			}
+
+			command := fmt.Sprintf("play-stream %s", item.id)
+			jsonData, err := json.Marshal(&Dms{Title: item.title, Resources: []DmsResource{{MimeType: "video/mp4", Command: command}}})
+			if err != nil {
+				return err
+			}
+
+			_, err = dms.Write(jsonData)
 			if err != nil {
 				return err
 			}
