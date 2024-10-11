@@ -89,6 +89,10 @@ func parseStanzas(filename string, destinationDir string) {
 					playlistMatches := playlistRegex.FindStringSubmatch(url)
 					cRegex := regexp.MustCompile(`youtube.com\/c\/(.*)`) //Doesn't work. Need a way to figure out channel id in this case
 					cMatches := cRegex.FindStringSubmatch(url)
+
+					redditRegex := regexp.MustCompile(`reddit.com\/r\/([^/]+)`)
+					redditMatches := redditRegex.FindStringSubmatch(url)
+
 					// /itemprop="channelId" content="(.*?)"/ and print $1
 					title = strings.Trim(title, " .")
 					filename := filenameMatches[1]
@@ -108,13 +112,13 @@ func parseStanzas(filename string, destinationDir string) {
 						playlist := playlistMatches[1]
 						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, filename)
 					} else {
-						parseAndWritePlaylists(title, url, destinationDir, filename)
+						subreddit := redditMatches[1]
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, filename)
 					}
 				} else {
 					fmt.Println("Filename must end with .txt")
 					continue
 				}
-
 			}
 		}
 	}
@@ -123,6 +127,35 @@ func parseStanzas(filename string, destinationDir string) {
 		log.Fatal(err)
 	}
 }
+
+// What is this for?
+// func getPlaylistIds(url string) []string {
+
+// 	resp, err := http.Get(url)
+// 	if err != nil {
+// 		fmt.Println("Error fetching URL:", err)
+// 		return nil
+// 	}
+// 	defer resp.Body.Close()
+
+// 	body, err := ioutil.ReadAll(resp.Body)
+// 	if err != nil {
+// 		fmt.Println("Error reading response body:", err)
+// 		return nil
+// 	}
+
+// 	bodyStr := string(body)
+
+// 	re := regexp.MustCompile(`"playlistId":"(.*?)"`)
+// 	playlistIds := re.FindAllStringSubmatch(bodyStr, -1)
+
+// 	playlistIds := []string{}
+// 	fmt.Println("Found Playlist IDs:")
+// 	for _, match := range playlistIds {
+// 		fmt.Println(match[1])
+// 		playlistIds = append(playlistIds, match[1])
+// 	}
+// }
 
 func parseAndWritePlaylists(title string, url string, destinationDir string, prefix string) error {
 	fmt.Printf("%s %s \n\n", title, url)
@@ -189,27 +222,50 @@ func parseFeed(url string) (string, []PlaylistItem) {
 		if len(matches) > 0 {
 			id = matches[1]
 			url = "plugin://plugin.video.youtube/play/?video_id=" + id
-		} else {
+		}
+
+		if len(url) == 0 {
 			r := regexp.MustCompile(`www.svtplay.se(\/.*)`)
 			matches := r.FindStringSubmatch(item.Link)
 			if len(matches) > 0 {
 				url = "plugin://plugin.video.svtplay/?mode=video&id=" + url2.QueryEscape(matches[1])
 			}
 		}
+
+		// For example from Reddit feed
+		if len(url) == 0 {
+			r := regexp.MustCompile(`youtube.com\/watch\?v=([a-zA-Z0-9-_]{11})`)
+			matches := r.FindStringSubmatch(item.Content)
+			if len(matches) > 0 {
+				id = matches[1]
+				url = "plugin://plugin.video.youtube/play/?video_id=" + id
+			}
+		}
+
+		if len(url) == 0 {
+			r := regexp.MustCompile(`youtu.b\/([a-zA-Z0-9-_]{11})`)
+			matches := r.FindStringSubmatch(item.Content)
+			if len(matches) > 0 {
+				id = matches[1]
+				url = "plugin://plugin.video.youtube/play/?video_id=" + id
+			}
+		}
+
 		if len(url) == 0 {
 			continue
 		}
 
 		//url :=
+		fmt.Println("Getting image")
 		imageUrl := ""
-		if feed.Image != nil {
-			imageUrl = feed.Image.URL
-		}
 		if item.Image != nil {
 			imageUrl = item.Image.URL
 		}
 		if len(imageUrl) < 1 {
 			imageUrl = getImageUrl(*item)
+		}
+		if feed.Image != nil {
+			imageUrl = feed.Image.URL
 		}
 
 		title := strip.StripTags(item.Title)
@@ -254,13 +310,27 @@ func getDescription(item gofeed.Item) string {
 
 func getImageUrl(item gofeed.Item) string {
 	//fmt.Printf("-- %s -- \n", item.Extensions["media"]["group"][0].Children["description"][0].Value)
-	a := item.Extensions["media"]["group"]
-	if len(a) > 0 {
-		a := a[0].Children["thumbnail"]
-		if len(a) > 0 {
-			return a[0].Attrs["url"]
+	//fmt.Printf("-- %s -- \n", item.Extensions["media"]["thumbnail"][0].Attrs["url"])
+
+	//a := item.Extensions["media"]["group"]
+	if mediaMap, ok := item.Extensions["media"]; ok {
+		if group, ok := mediaMap["group"]; ok {
+			a := group[0].Children["thumbnail"]
+			if len(a) > 0 {
+				return a[0].Attrs["url"]
+			}
 		}
 	}
+
+	//a = item.Extensions["media"]["thumbnail"]
+	if mediaMap, ok := item.Extensions["media"]; ok {
+		if thumbnail, ok := mediaMap["thumbnail"]; ok {
+			if len(thumbnail) > 0 {
+				return thumbnail[0].Attrs["url"]
+			}
+		}
+	}
+
 	if len(item.Enclosures) > 0 {
 		for _, enclosure := range item.Enclosures {
 			if enclosure.Type == "image/jpeg" {
@@ -268,6 +338,7 @@ func getImageUrl(item gofeed.Item) string {
 			}
 		}
 	}
+
 	return ""
 	//return item.Extensions["media"]["group"][0].Children["thumbnail"][0].Attrs["url"]
 }
