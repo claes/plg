@@ -258,14 +258,14 @@ func parseFeed(url string) (string, []PlaylistItem) {
 		//url :=
 		fmt.Println("Getting image")
 		imageUrl := ""
+		if feed.Image != nil {
+			imageUrl = feed.Image.URL
+		}
 		if item.Image != nil {
 			imageUrl = item.Image.URL
 		}
 		if len(imageUrl) < 1 {
 			imageUrl = getImageUrl(*item)
-		}
-		if feed.Image != nil {
-			imageUrl = feed.Image.URL
 		}
 
 		title := strip.StripTags(item.Title)
