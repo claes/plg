@@ -406,28 +406,28 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		title = strings.Replace(title, ":", "", -1)
 		strmfile := dir + title + ".strm"
 		nfofile := dir + title + ".nfo"
-		urlfile := dir + title + ".url"
 		dmsfile := dir + title + ".dms.json"
 
 		{
 
-			// URL
-			url, err := os.Create(urlfile)
-			if err != nil {
-				return err
-			}
-			defer url.Close()
-			defer os.Chtimes(urlfile, item.time, item.time)
+			// URL. Disable for now
+			// urlfile := dir + title + ".url"
+			// url, err := os.Create(urlfile)
+			// if err != nil {
+			// 	return err
+			// }
+			// defer url.Close()
+			// defer os.Chtimes(urlfile, item.time, item.time)
 
-			w := bufio.NewWriter(url)
-			if err != nil {
-				return err
-			}
-			_, err = w.WriteString(item.url)
-			if err != nil {
-				return err
-			}
-			w.Flush()
+			// w := bufio.NewWriter(url)
+			// if err != nil {
+			// 	return err
+			// }
+			// _, err = w.WriteString(item.url)
+			// if err != nil {
+			// 	return err
+			// }
+			// w.Flush()
 
 			// Stream
 			strm, err := os.Create(strmfile)
@@ -437,7 +437,7 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			defer strm.Close()
 			defer os.Chtimes(strmfile, item.time, item.time)
 
-			w = bufio.NewWriter(strm)
+			var w = bufio.NewWriter(strm)
 			if err != nil {
 				return err
 			}
