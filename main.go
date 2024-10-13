@@ -122,7 +122,7 @@ func parseStanzas(filename string, destinationDir string) {
 					} else if len(playlistMatches) > 0 {
 						playlist := playlistMatches[1]
 						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, filename)
-					} else {
+					} else if len(redditMatches) > 0 {
 						subreddit := redditMatches[1]
 						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, filename)
 					}
