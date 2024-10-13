@@ -381,20 +381,30 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 	if err != nil {
 		return err
 	}
+	epoch := time.Unix(1, 0)
+	fmt.Println("Setting EPOCH for " + dir)
+	err = os.Chtimes(dir, epoch, epoch) // Set both atime and mtime
+	if err != nil {
+		return err
+	}
 	slog.Info("Created directory, will now create playlist items", "directory", dir, "noOfItems", len(playlist))
 
-	dirStat, err := os.Stat(dir)
-	if err != nil {
-		return err
-	}
-	dirTime := dirStat.ModTime()
+	var mostRecentTime time.Time
+
+	// dirStat, err := os.Stat(dir)
+	// if err != nil {
+	// 	return err
+	// }
+	//dirTime := dirStat.ModTime()
+	// var dirTime time.Time
 
 	baseDir := destinationDir + "/" + prefix + "/"
-	baseDirStat, err := os.Stat(baseDir)
-	if err != nil {
-		return err
-	}
-	baseDirTime := baseDirStat.ModTime()
+	// baseDirStat, err := os.Stat(baseDir)
+	// if err != nil {
+	// 	return err
+	// }
+	//baseDirTime := baseDirStat.ModTime()
+	// var baseDirTime time.Time
 
 	for _, item := range playlist {
 
@@ -498,12 +508,16 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			}
 			w.Flush()
 
-			if baseDirTime.Before(item.time) {
-				baseDirTime = item.time
+			if mostRecentTime.IsZero() || mostRecentTime.Before(item.time) {
+				mostRecentTime = item.time
 			}
-			if dirTime.Before(item.time) {
-				dirTime = item.time
-			}
+
+			// if baseDirTime.IsZero() || baseDirTime.Before(item.time) {
+			// 	baseDirTime = item.time
+			// }
+			// if dirTime.IsZero() || dirTime.Before(item.time) {
+			// 	dirTime = item.time
+			// }
 		}
 		err = os.Chtimes(strmfile, item.time, item.time)
 		if err != nil {
@@ -522,13 +536,30 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtProgram), destinationDir, programPrefix)
 		}
 	}
-	err = os.Chtimes(dir, dirTime, dirTime)
+
+	err = os.Chtimes(dir, mostRecentTime, mostRecentTime)
+	//err = os.Chtimes(baseDir, mostRecentTime, mostRecentTime)
+
+	// dirStat, err := os.Stat(dir)
+	// if err != nil {
+	// 	return err
+	// }
+	// if dirStat.ModTime().Before(dirTime) {
+	// 	err = os.Chtimes(dir, dirTime, dirTime)
+	// 	if err != nil {
+	// 		slog.Error("Could not change mtime of dir", "directory", dir, "error", err)
+	// 	}
+	// }
+
+	baseDirStat, err := os.Stat(baseDir)
 	if err != nil {
-		slog.Error("Could not change mtime of dir", "directory", dir, "error", err)
+		return err
 	}
-	err = os.Chtimes(baseDir, baseDirTime, baseDirTime)
-	if err != nil {
-		slog.Error("Could not change mtime of basedir", "directory", baseDir, "error", err)
+	if baseDirStat.ModTime().Before(mostRecentTime) {
+		err = os.Chtimes(baseDir, mostRecentTime, mostRecentTime)
+		if err != nil {
+			slog.Error("Could not change mtime of basedir", "directory", baseDir, "error", err)
+		}
 	}
 	return nil
 }
