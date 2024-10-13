@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	url2 "net/url"
 	"os"
 	"path"
@@ -45,8 +46,18 @@ func main() {
 
 	var destinationDir = flag.String("destination", ".", "Destination directory")
 	var stanza = flag.String("stanza", "stanzas.txt", "Stanzas text file")
+	var debug = flag.Bool("debug", false, "Debug logging")
+
 	//var stanza = flag.String("age", "0", "Age of files to keep")
 	flag.Parse()
+
+	if *debug {
+		var programLevel = new(slog.LevelVar)
+		programLevel.Set(slog.LevelDebug)
+		handler := slog.NewTextHandler(os.Stderr,
+			&slog.HandlerOptions{Level: programLevel})
+		slog.SetDefault(slog.New(handler))
+	}
 
 	channels = make(map[string]string)
 	parseStanzas(*stanza, *destinationDir)
@@ -55,7 +66,7 @@ func main() {
 
 func parseStanzas(filename string, destinationDir string) {
 
-	fmt.Printf("Parsing stanza file %s", filename)
+	slog.Info("Parsing stanza file", "filename", filename)
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -67,7 +78,7 @@ func parseStanzas(filename string, destinationDir string) {
 	lines := make([]string, 0)
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
-		fmt.Println(scanner.Text())
+		slog.Debug("Scanned line", "line", scanner.Text())
 	}
 	for i, line := range lines {
 		if strings.HasPrefix(line, "http") {
@@ -116,7 +127,7 @@ func parseStanzas(filename string, destinationDir string) {
 						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, filename)
 					}
 				} else {
-					fmt.Println("Filename must end with .txt")
+					slog.Info("Filename must end with .txt", "filename", file.Name())
 					continue
 				}
 			}
@@ -158,20 +169,20 @@ func parseStanzas(filename string, destinationDir string) {
 // }
 
 func parseAndWritePlaylists(title string, url string, destinationDir string, prefix string) error {
-	fmt.Printf("%s %s \n\n", title, url)
+	slog.Info("Parsing playlist", "title", title, "url", url)
 	if len(url) > 0 {
 		_, playlist := parseFeed(url)
 		if playlist == nil {
-			fmt.Println("Skipping playlist for: ", title)
+			slog.Debug("Skipping playlist", "title", title)
 			return nil
 		} else {
-			fmt.Println("Writing playlist for: ", title)
+			slog.Debug("Writing playlist", "title", title)
 			err := writePlaylist(destinationDir, prefix, title, playlist)
 			if err != nil {
-				fmt.Errorf("Error while writing playlist for %v;  %v", playlist, err)
+				slog.Error("Error writing playlist", "playlist", playlist, "title", title, "error", err)
+				//fmt.Errorf("Error while writing playlist for %v;  %v", playlist, err)
 			}
 		}
-
 	}
 	return nil
 }
@@ -180,21 +191,22 @@ func parseFeed(url string) (string, []PlaylistItem) {
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(url)
 	if err != nil {
-		fmt.Errorf("Error while writing playlist for %s;  %v \n", url, err)
+		slog.Error("Error writing playlist", "url", url, "error", err)
+		//fmt.Errorf("Error while writing playlist for %s;  %v \n", url, err)
 		return "", nil
 	}
 	if len(feed.Items) == 0 {
-		fmt.Errorf("No items in feed for  %s \n", url)
+		slog.Error("No items in feed", "url", url)
+		//fmt.Errorf("No items in feed for  %s \n", url)
 		return "", nil
 	}
-	fmt.Printf("Parsing feed for %s %s\n\n", feed.Title, url)
-
+	slog.Debug("Parsing feed", "title", feed.Title, "url", url)
 	if feed.Link != "" {
 		channelRegex := regexp.MustCompile(`www.youtube.com\/channel\/(.*)`)
 		channelMatches := channelRegex.FindStringSubmatch(feed.Link)
 		if len(channelMatches) > 0 {
 			channelId := channelMatches[1]
-			fmt.Printf("Channel: %s ", channelId)
+			slog.Debug("Adding channel", "channel", channelId)
 			channels[channelId] = feed.Title
 		}
 
@@ -213,7 +225,9 @@ func parseFeed(url string) (string, []PlaylistItem) {
 	playlist := make([]PlaylistItem, 0)
 	for _, item := range feed.Items {
 
-		fmt.Printf("Item: %s ; %s ; %s ; %s ; %v", item.PublishedParsed, item.UpdatedParsed, item.Published, item.Updated, item)
+		slog.Debug("Processing playlist item", "publishedParsed", item.PublishedParsed, "updatedParsed", item.UpdatedParsed, "published",
+			item.Published, "updated", item.Updated, "item", item)
+		//fmt.Printf("Item: %s ; %s ; %s ; %s ; %v", item.PublishedParsed, item.UpdatedParsed, item.Published, item.Updated, item)
 
 		url := ""
 		id := ""
@@ -256,7 +270,7 @@ func parseFeed(url string) (string, []PlaylistItem) {
 		}
 
 		//url :=
-		fmt.Println("Getting image")
+		slog.Debug("Getting image")
 		imageUrl := ""
 		if feed.Image != nil {
 			imageUrl = feed.Image.URL
@@ -291,7 +305,8 @@ func parseFeed(url string) (string, []PlaylistItem) {
 
 		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, id, item.Link, time}
 		playlist = append(playlist, playlistItem)
-		fmt.Printf("%s %s \n", playlistItem.title, playlistItem.url)
+		slog.Debug("Created playlist item", "title", playlistItem.title, "url", playlistItem.url)
+		//fmt.Printf("%s %s \n", playlistItem.title, playlistItem.url)
 	}
 	return feed.Title, playlist
 }
@@ -353,12 +368,12 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 	n = strings.Replace(n, ":", "", -1)
 
 	dir := destinationDir + "/" + prefix + "/" + n + "/"
-	fmt.Printf("Will create directory %s\n", dir)
+	slog.Debug("Will create directory", "directory", dir)
 	err := os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Created directory %s. Will now create %d playlist items.\n", dir, len(playlist))
+	slog.Info("Created directory, will now create playlist items", "directory", dir, "noOfItems", len(playlist))
 
 	dirStat, err := os.Stat(dir)
 	if err != nil {
@@ -464,11 +479,11 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		}
 		err = os.Chtimes(strmfile, item.time, item.time)
 		if err != nil {
-			fmt.Printf("Could not change mtime of %s: %v\n", strmfile, err)
+			slog.Error("Could not change mtime of strm file", "file", strmfile, "error", err)
 		}
 		err = os.Chtimes(nfofile, item.time, item.time)
 		if err != nil {
-			fmt.Printf("Could not change mtime of %s: %v\n", nfofile, err)
+			slog.Error("Could not change mtime of nfo file", "file", nfofile, "error", err)
 		}
 
 		svtProgramRegex := regexp.MustCompile(`www.svtplay.se\/([^\/]+)$`)
@@ -481,11 +496,11 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 	}
 	err = os.Chtimes(dir, dirTime, dirTime)
 	if err != nil {
-		fmt.Printf("Could not change mtime of %s: %v\n", dir, err)
+		slog.Error("Could not change mtime of dir", "directory", dir, "error", err)
 	}
 	err = os.Chtimes(baseDir, baseDirTime, baseDirTime)
 	if err != nil {
-		fmt.Printf("Could not change mtime of %s: %v\n", baseDir, err)
+		slog.Error("Could not change mtime of basedir", "directory", baseDir, "error", err)
 	}
 	return nil
 }
