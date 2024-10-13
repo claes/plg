@@ -33,8 +33,9 @@ type PlaylistItem struct {
 	sorttitle    string
 	description  string
 	author       string
-	iconUrl      string
 	url          string
+	iconUrl      string
+	strmUrl      string
 	id           string
 	recursiveUrl string
 	time         time.Time
@@ -125,6 +126,8 @@ func parseStanzas(filename string, destinationDir string) {
 					} else if len(redditMatches) > 0 {
 						subreddit := redditMatches[1]
 						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, filename)
+					} else {
+						parseAndWritePlaylists(title, url, destinationDir, filename)
 					}
 				} else {
 					slog.Info("Filename must end with .txt", "filename", file.Name())
@@ -229,43 +232,48 @@ func parseFeed(url string) (string, []PlaylistItem) {
 			item.Published, "updated", item.Updated, "item", item)
 		//fmt.Printf("Item: %s ; %s ; %s ; %s ; %v", item.PublishedParsed, item.UpdatedParsed, item.Published, item.Updated, item)
 
-		url := ""
+		strmUrl := ""
 		id := ""
+		url := ""
 		r := regexp.MustCompile(`www.youtube.com\/watch\?v=(.*)`)
 		matches := r.FindStringSubmatch(item.Link)
 		if len(matches) > 0 {
 			id = matches[1]
-			url = "plugin://plugin.video.youtube/play/?video_id=" + id
+			url = item.Link
+			strmUrl = "plugin://plugin.video.youtube/play/?video_id=" + id
 		}
 
-		if len(url) == 0 {
+		if len(strmUrl) == 0 {
 			r := regexp.MustCompile(`www.svtplay.se(\/.*)`)
 			matches := r.FindStringSubmatch(item.Link)
+			url = item.Link
 			if len(matches) > 0 {
-				url = "plugin://plugin.video.svtplay/?mode=video&id=" + url2.QueryEscape(matches[1])
+				strmUrl = "plugin://plugin.video.svtplay/?mode=video&id=" + url2.QueryEscape(matches[1])
 			}
 		}
 
-		// For example from Reddit feed
-		if len(url) == 0 {
+		// For example from Reddit feed, the contents is not item.Link but in item.Content
+		if len(strmUrl) == 0 {
 			r := regexp.MustCompile(`youtube.com\/watch\?v=([a-zA-Z0-9-_]{11})`)
 			matches := r.FindStringSubmatch(item.Content)
 			if len(matches) > 0 {
 				id = matches[1]
-				url = "plugin://plugin.video.youtube/play/?video_id=" + id
+				url = "https://www.youtube.com/watch?v=" + id
+				strmUrl = "plugin://plugin.video.youtube/play/?video_id=" + id
 			}
 		}
 
-		if len(url) == 0 {
+		if len(strmUrl) == 0 {
 			r := regexp.MustCompile(`youtu.b\/([a-zA-Z0-9-_]{11})`)
 			matches := r.FindStringSubmatch(item.Content)
 			if len(matches) > 0 {
 				id = matches[1]
-				url = "plugin://plugin.video.youtube/play/?video_id=" + id
+				url = "https://www.youtube.com/watch?v=" + id
+				strmUrl = "plugin://plugin.video.youtube/play/?video_id=" + id
 			}
 		}
 
-		if len(url) == 0 {
+		if len(strmUrl) == 0 {
 			continue
 		}
 
@@ -303,9 +311,9 @@ func parseFeed(url string) (string, []PlaylistItem) {
 			time = *item.UpdatedParsed
 		}
 
-		playlistItem := PlaylistItem{title, sorttitle, description, author, imageUrl, url, id, item.Link, time}
+		playlistItem := PlaylistItem{title, sorttitle, description, author, url, imageUrl, strmUrl, id, item.Link, time}
 		playlist = append(playlist, playlistItem)
-		slog.Debug("Created playlist item", "title", playlistItem.title, "url", playlistItem.url)
+		slog.Debug("Created playlist item", "title", playlistItem.title, "url", playlistItem.url, "strmUrl", playlistItem.strmUrl)
 		//fmt.Printf("%s %s \n", playlistItem.title, playlistItem.url)
 	}
 	return feed.Title, playlist
@@ -398,9 +406,29 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		title = strings.Replace(title, ":", "", -1)
 		strmfile := dir + title + ".strm"
 		nfofile := dir + title + ".nfo"
+		urlfile := dir + title + ".url"
 		dmsfile := dir + title + ".dms.json"
 
 		{
+
+			// URL
+			url, err := os.Create(urlfile)
+			if err != nil {
+				return err
+			}
+			defer url.Close()
+			defer os.Chtimes(urlfile, item.time, item.time)
+
+			w := bufio.NewWriter(url)
+			if err != nil {
+				return err
+			}
+			_, err = w.WriteString(item.url)
+			if err != nil {
+				return err
+			}
+			w.Flush()
+
 			// Stream
 			strm, err := os.Create(strmfile)
 			if err != nil {
@@ -409,11 +437,11 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			defer strm.Close()
 			defer os.Chtimes(strmfile, item.time, item.time)
 
-			w := bufio.NewWriter(strm)
+			w = bufio.NewWriter(strm)
 			if err != nil {
 				return err
 			}
-			_, err = w.WriteString(item.url + "\n")
+			_, err = w.WriteString(item.strmUrl + "\n")
 			if err != nil {
 				return err
 			}
