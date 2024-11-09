@@ -46,7 +46,8 @@ var channels map[string]string
 func main() {
 
 	var destinationDir = flag.String("destination", ".", "Destination directory")
-	var stanza = flag.String("stanza", "stanzas.txt", "Stanzas text file")
+	var stanza = flag.String("stanza", "stanzas.txt", "Stanzas text file, or - for stdin")
+	var name = flag.String("name", "", "Name to use. Required if stanza is stdin")
 	var debug = flag.Bool("debug", false, "Debug logging")
 
 	//var stanza = flag.String("age", "0", "Age of files to keep")
@@ -61,35 +62,50 @@ func main() {
 	}
 
 	channels = make(map[string]string)
-	parseStanzas(*stanza, *destinationDir)
-
+	parseStanzas(*stanza, *name, *destinationDir)
 }
 
-func parseStanzas(filename string, destinationDir string) {
-
-	slog.Info("Parsing stanza file", "filename", filename)
-
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
+func parseStanzas(filename string, name string, destinationDir string) {
+	var file *os.File
+	var err error
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	lines := make([]string, 0)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-		slog.Debug("Scanned line", "line", scanner.Text())
+	if filename == "-" {
+		file = os.Stdin
+		slog.Info("Parsing standard input")
+	} else {
+		file, err = os.Open(filename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		slog.Info("Parsing stanza file", "filename", filename)
 	}
-	for i, line := range lines {
-		if strings.HasPrefix(line, "http") {
-			if i > 0 {
-				title := lines[i-1]
-				url := lines[i]
 
-				filenameRegex := regexp.MustCompile(`(.*).txt`)
-				filenameMatches := filenameRegex.FindStringSubmatch(path.Base(file.Name()))
-				if len(filenameMatches) > 0 {
+	prefix := ""
+	if len(name) > 0 {
+		prefix = name
+	} else {
+		filenameRegex := regexp.MustCompile(`(.*).txt`)
+		filenameMatches := filenameRegex.FindStringSubmatch(path.Base(file.Name()))
+		if len(filenameMatches) > 0 {
+			prefix = filenameMatches[1]
+		}
+	}
+
+	if prefix == "" {
+		slog.Info("If name not given, filename must end with .txt", "filename", file.Name())
+	} else {
+		scanner := bufio.NewScanner(file)
+		lines := make([]string, 0)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+			slog.Debug("Scanned line", "line", scanner.Text())
+		}
+		for i, line := range lines {
+			if strings.HasPrefix(line, "http") {
+				if i > 0 {
+					title := lines[i-1]
+					url := lines[i]
 
 					svtRegex := regexp.MustCompile(`www.svtplay.se\/(.*)\/rss\.xml`)
 					svtMatches := svtRegex.FindStringSubmatch(url)
@@ -107,39 +123,36 @@ func parseStanzas(filename string, destinationDir string) {
 
 					// /itemprop="channelId" content="(.*?)"/ and print $1
 					title = strings.Trim(title, " .")
-					filename := filenameMatches[1]
+
 					if len(svtMatches) > 0 {
 						svtCategory := svtMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtCategory), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtCategory), destinationDir, prefix)
 					} else if len(channelMatches) > 0 {
 						channelID := channelMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
 					} else if len(cMatches) > 0 {
 						channelID := cMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
 					} else if len(userMatches) > 0 {
 						user := userMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?user=%s", user), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?user=%s", user), destinationDir, prefix)
 					} else if len(playlistMatches) > 0 {
 						playlist := playlistMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, prefix)
 					} else if len(redditMatches) > 0 {
 						subreddit := redditMatches[1]
-						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, filename)
+						parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, prefix)
 					} else {
-						parseAndWritePlaylists(title, url, destinationDir, filename)
+						parseAndWritePlaylists(title, url, destinationDir, prefix)
 					}
-				} else {
-					slog.Info("Filename must end with .txt", "filename", file.Name())
-					continue
 				}
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
 }
 
 // What is this for?
@@ -382,7 +395,6 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		return err
 	}
 	epoch := time.Unix(1, 0)
-	fmt.Println("Setting EPOCH for " + dir)
 	err = os.Chtimes(dir, epoch, epoch) // Set both atime and mtime
 	if err != nil {
 		return err
