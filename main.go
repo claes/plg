@@ -46,6 +46,7 @@ type PlaylistItem struct {
 }
 
 var channels map[string]string
+var sleep *int
 
 func main() {
 
@@ -54,6 +55,7 @@ func main() {
 	var name = flag.String("name", "", "Name to use. Required if stanza is stdin")
 	var debug = flag.Bool("debug", false, "Debug logging")
 	var parseChannelPlaylists = flag.Bool("channelPlaylists", false, "Parse channel playlists")
+	sleep = flag.Int("sleep", 0, "Sleep between steps")
 
 	//var stanza = flag.String("age", "0", "Age of files to keep")
 	flag.Parse()
@@ -135,6 +137,7 @@ func createPlaylistMap(lines []string) map[string]string {
 func parsePlaylists(playlists map[string]string, destinationDir string, prefix string, parseChannelPlaylists bool) {
 	for url, title := range playlists {
 		parsePlaylist(title, url, destinationDir, prefix, parseChannelPlaylists)
+		time.Sleep(time.Duration(*sleep) * time.Second)
 	}
 }
 
@@ -227,6 +230,8 @@ func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir st
 		}
 		playlistURL := "https://www.youtube.com/playlist?list=" + playlistId
 		playlistMap[playlistURL] = playlistName
+
+		time.Sleep(time.Duration(*sleep) * time.Second)
 	}
 	if len(playlistMap) > 0 {
 		parsePlaylists(playlistMap, destinationDir+"/"+prefix+"/"+title, section, false)
