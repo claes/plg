@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -237,21 +238,21 @@ func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir st
 func getYoutubePlaylistsForChannel(channelId string, section string, extractionRegex string) []string {
 	re, err := regexp.Compile(extractionRegex)
 	if err != nil {
-		fmt.Printf("Error compiling regex: %v\n", err)
+		slog.Error("Error compiling regex", "regex", re, "error", err)
 		return nil
 	}
 
 	channelPlaylistsUrl := "https://www.youtube.com/channel/" + channelId + "/" + section
 	resp, err := http.Get(channelPlaylistsUrl)
 	if err != nil {
-		fmt.Printf("Error fetching URL %s: %v\n", channelPlaylistsUrl)
+		slog.Error("Error fetching URL", "url", channelPlaylistsUrl, "error", err)
 		return nil
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Error reading response body for url %s: %v\n", channelPlaylistsUrl)
+		slog.Error("Error reading response body for url", "url", channelPlaylistsUrl, "error", err)
 		return nil
 	}
 
@@ -263,32 +264,29 @@ func getYoutubePlaylistsForChannel(channelId string, section string, extractionR
 		}
 	}
 
-	for _, playlistId := range playlistIds {
-		fmt.Println(playlistId)
-		fmt.Println(getYoutubePlaylistName(playlistId))
-	}
-	return playlistIds
+	slices.Sort(playlistIds)
+	return slices.Compact(playlistIds)
 }
 
 func getYoutubePlaylistName(playlistId string) string {
 	titleRegex := "<title>(.*)- YouTube</title>"
 	re, err := regexp.Compile(titleRegex)
 	if err != nil {
-		fmt.Printf("Error compiling regex: %v\n", err)
+		slog.Error("Error compiling regex", "regex", re, "error", err)
 		return ""
 	}
 
 	playlistUrl := "https://www.youtube.com/playlist?list=" + playlistId
 	resp, err := http.Get(playlistUrl)
 	if err != nil {
-		fmt.Printf("Error fetching URL %s: %v\n", playlistUrl)
+		slog.Error("Error fetching URL", "url", playlistUrl, "error", err)
 		return ""
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Error reading response body for url %s: %v\n", playlistUrl)
+		slog.Error("Error reading response body for url", "url", playlistUrl, "error", err)
 		return ""
 	}
 
