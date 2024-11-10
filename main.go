@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"log/slog"
@@ -47,13 +48,11 @@ var channels map[string]string
 
 func main() {
 
-	getYoutubePlaylistsForChannel("UCAb60rVrvVQVfSgrX1UWb0g")
-
-	os.Exit(0)
 	var destinationDir = flag.String("destination", ".", "Destination directory")
 	var stanza = flag.String("stanza", "stanzas.txt", "Stanzas text file, or - for stdin")
 	var name = flag.String("name", "", "Name to use. Required if stanza is stdin")
 	var debug = flag.Bool("debug", false, "Debug logging")
+	var parseChannelPlaylists = flag.Bool("channelPlaylists", false, "Parse channel playlists")
 
 	//var stanza = flag.String("age", "0", "Age of files to keep")
 	flag.Parse()
@@ -67,10 +66,10 @@ func main() {
 	}
 
 	channels = make(map[string]string)
-	parseStanzas(*stanza, *name, *destinationDir)
+	parseStanzas(*stanza, *name, *destinationDir, *parseChannelPlaylists)
 }
 
-func parseStanzas(filename string, name string, destinationDir string) {
+func parseStanzas(filename string, name string, destinationDir string, parseChannelPlaylists bool) {
 	var file *os.File
 	var err error
 	defer file.Close()
@@ -108,55 +107,7 @@ func parseStanzas(filename string, name string, destinationDir string) {
 		}
 
 		playlistMap := createPlaylistMap(lines)
-		parsePlaylists(playlistMap, destinationDir, prefix)
-
-		// for i, line := range lines {
-		// 	if strings.HasPrefix(line, "http") {
-		// 		if i > 0 {
-		// 			title := lines[i-1]
-		// 			url := lines[i]
-
-		// 			svtRegex := regexp.MustCompile(`www.svtplay.se\/(.*)\/rss\.xml`)
-		// 			svtMatches := svtRegex.FindStringSubmatch(url)
-		// 			channelRegex := regexp.MustCompile(`youtube.com\/channel\/(.*)`)
-		// 			channelMatches := channelRegex.FindStringSubmatch(url)
-		// 			userRegex := regexp.MustCompile(`youtube.com\/user\/(.*)`)
-		// 			userMatches := userRegex.FindStringSubmatch(url)
-		// 			playlistRegex := regexp.MustCompile(`youtube.com\/playlist\?list=(.*)`)
-		// 			playlistMatches := playlistRegex.FindStringSubmatch(url)
-		// 			cRegex := regexp.MustCompile(`youtube.com\/c\/(.*)`) //Doesn't work. Need a way to figure out channel id in this case
-		// 			cMatches := cRegex.FindStringSubmatch(url)
-
-		// 			redditRegex := regexp.MustCompile(`reddit.com\/r\/([^/]+)`)
-		// 			redditMatches := redditRegex.FindStringSubmatch(url)
-
-		// 			// /itemprop="channelId" content="(.*?)"/ and print $1
-		// 			title = strings.Trim(title, " .")
-
-		// 			if len(svtMatches) > 0 {
-		// 				svtCategory := svtMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtCategory), destinationDir, prefix)
-		// 			} else if len(channelMatches) > 0 {
-		// 				channelID := channelMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
-		// 			} else if len(cMatches) > 0 {
-		// 				channelID := cMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
-		// 			} else if len(userMatches) > 0 {
-		// 				user := userMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?user=%s", user), destinationDir, prefix)
-		// 			} else if len(playlistMatches) > 0 {
-		// 				playlist := playlistMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, prefix)
-		// 			} else if len(redditMatches) > 0 {
-		// 				subreddit := redditMatches[1]
-		// 				parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, prefix)
-		// 			} else {
-		// 				parseAndWritePlaylists(title, url, destinationDir, prefix)
-		// 			}
-		// 		}
-		// 	}
-		// }
+		parsePlaylists(playlistMap, destinationDir, prefix, parseChannelPlaylists)
 
 		if err := scanner.Err(); err != nil {
 			log.Fatal(err)
@@ -180,13 +131,14 @@ func createPlaylistMap(lines []string) map[string]string {
 	return playlistMap
 }
 
-func parsePlaylists(playlists map[string]string, destinationDir string, prefix string) {
+func parsePlaylists(playlists map[string]string, destinationDir string, prefix string, parseChannelPlaylists bool) {
 	for url, title := range playlists {
-		parsePlaylist(title, url, destinationDir, prefix)
+		parsePlaylist(title, url, destinationDir, prefix, parseChannelPlaylists)
 	}
 }
 
-func parsePlaylist(title, url, destinationDir, prefix string) {
+func parsePlaylist(title, url, destinationDir, prefix string, parseChannelPlaylists bool) {
+	slog.Debug("Parsing playlist", "title", title, "prefix", prefix, "url", url)
 	svtRegex := regexp.MustCompile(`www.svtplay.se\/(.*)\/rss\.xml`)
 	svtMatches := svtRegex.FindStringSubmatch(url)
 	channelRegex := regexp.MustCompile(`youtube.com\/channel\/(.*)`)
@@ -206,36 +158,69 @@ func parsePlaylist(title, url, destinationDir, prefix string) {
 
 	if len(svtMatches) > 0 {
 		svtCategory := svtMatches[1]
+		slog.Debug("SVT category detected", "category", svtCategory)
 		parseAndWritePlaylists(title, fmt.Sprintf("https://www.svtplay.se/%s/rss.xml", svtCategory), destinationDir, prefix)
 	} else if len(channelMatches) > 0 {
 		channelID := channelMatches[1]
-		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
+		slog.Debug("YouTube channel detected", "channel", channelID)
+		parseAndWriteChannelPlaylists(channelID, parseChannelPlaylists, title, destinationDir, prefix)
 	} else if len(cMatches) > 0 {
 		channelID := cMatches[1]
-		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
+		slog.Debug("YouTube c channel detected", "channel", channelID)
+		parseAndWriteChannelPlaylists(channelID, parseChannelPlaylists, title, destinationDir, prefix)
 	} else if len(userMatches) > 0 {
 		user := userMatches[1]
+		slog.Debug("YouTube user detected", "user", user)
 		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?user=%s", user), destinationDir, prefix)
 	} else if len(playlistMatches) > 0 {
 		playlist := playlistMatches[1]
+		slog.Debug("YouTube playlist detected", "playlist", playlist)
 		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?playlist_id=%s", playlist), destinationDir, prefix)
 	} else if len(redditMatches) > 0 {
 		subreddit := redditMatches[1]
+		slog.Debug("Subreddit detected", "subreddit", subreddit)
 		parseAndWritePlaylists(title, fmt.Sprintf("https://www.reddit.com/r/%s/.rss", subreddit), destinationDir, prefix)
 	} else {
 		parseAndWritePlaylists(title, url, destinationDir, prefix)
 	}
 }
 
-func getYoutubePlaylistsForChannel(channelId string) []string {
-	playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
-	re, err := regexp.Compile(playlistRegex)
+func parseAndWriteChannelPlaylists(channelID string, parseChannelPlaylists bool, title string, destinationDir string, prefix string) {
+	if parseChannelPlaylists {
+		slog.Debug("Parsing channel playlists", "title", title)
+
+		// playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
+		// playlistsSection := "playlists"
+		// parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, playlistsSection, playlistRegex)
+
+		releasesRegex := "\"playlistId\":\"(OL[a-zA-Z0-9_-]{39})\""
+		releasesSection := "releases"
+		parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, releasesSection, releasesRegex)
+	} else {
+		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
+	}
+}
+
+func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir string, prefix string, title string, section string, playlistRegex string) {
+	playlistIds := getYoutubePlaylistsForChannel(channelID, section, playlistRegex)
+	playlistMap := make(map[string]string)
+	for _, playlistId := range playlistIds {
+		playlistName := getYoutubePlaylistName(playlistId)
+		playlistURL := "https://www.youtube.com/playlist?list=" + playlistId
+		playlistMap[playlistURL] = playlistName
+	}
+	parsePlaylists(playlistMap, destinationDir+"/"+prefix+"/"+title, section, false)
+}
+
+func getYoutubePlaylistsForChannel(channelId string, section string, extractionRegex string) []string {
+	//playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
+	re, err := regexp.Compile(extractionRegex)
 	if err != nil {
 		fmt.Printf("Error compiling regex: %v\n", err)
 		return nil
 	}
 
-	channelPlaylistsUrl := "https://www.youtube.com/channel/" + channelId + "/playlists"
+	channelPlaylistsUrl := "https://www.youtube.com/channel/" + channelId + "/" + section
 	resp, err := http.Get(channelPlaylistsUrl)
 	if err != nil {
 		fmt.Printf("Error fetching URL %s: %v\n", channelPlaylistsUrl)
@@ -249,19 +234,19 @@ func getYoutubePlaylistsForChannel(channelId string) []string {
 		return nil
 	}
 
-	var playlistIdList []string
+	var playlistIds []string
 	matches := re.FindAllStringSubmatch(string(body), -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			playlistIdList = append(playlistIdList, match[1])
+			playlistIds = append(playlistIds, match[1])
 		}
 	}
 
-	for _, playlistId := range playlistIdList {
+	for _, playlistId := range playlistIds {
 		fmt.Println(playlistId)
 		fmt.Println(getYoutubePlaylistName(playlistId))
 	}
-	return playlistIdList
+	return playlistIds
 }
 
 func getYoutubePlaylistName(playlistId string) string {
@@ -289,40 +274,11 @@ func getYoutubePlaylistName(playlistId string) string {
 	matches := re.FindAllStringSubmatch(string(body), -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			return match[1]
+			return html.UnescapeString(match[1])
 		}
 	}
 	return ""
 }
-
-// What is this for?
-// func getPlaylistIds(url string) []string {
-
-// 	resp, err := http.Get(url)
-// 	if err != nil {
-// 		fmt.Println("Error fetching URL:", err)
-// 		return nil
-// 	}
-// 	defer resp.Body.Close()
-
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	if err != nil {
-// 		fmt.Println("Error reading response body:", err)
-// 		return nil
-// 	}
-
-// 	bodyStr := string(body)
-
-// 	re := regexp.MustCompile(`"playlistId":"(.*?)"`)
-// 	playlistIds := re.FindAllStringSubmatch(bodyStr, -1)
-
-// 	playlistIds := []string{}
-// 	fmt.Println("Found Playlist IDs:")
-// 	for _, match := range playlistIds {
-// 		fmt.Println(match[1])
-// 		playlistIds = append(playlistIds, match[1])
-// 	}
-// }
 
 func parseAndWritePlaylists(title string, url string, destinationDir string, prefix string) error {
 	slog.Info("Parsing playlist", "title", title, "url", url)
