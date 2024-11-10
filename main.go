@@ -163,11 +163,11 @@ func parsePlaylist(title, url, destinationDir, prefix string, parseChannelPlayli
 	} else if len(channelMatches) > 0 {
 		channelID := channelMatches[1]
 		slog.Debug("YouTube channel detected", "channel", channelID)
-		parseAndWriteChannelPlaylists(channelID, parseChannelPlaylists, title, destinationDir, prefix)
+		parseAndWriteChannelPlaylists(url, channelID, parseChannelPlaylists, title, destinationDir, prefix)
 	} else if len(cMatches) > 0 {
 		channelID := cMatches[1]
 		slog.Debug("YouTube c channel detected", "channel", channelID)
-		parseAndWriteChannelPlaylists(channelID, parseChannelPlaylists, title, destinationDir, prefix)
+		parseAndWriteChannelPlaylists(url, channelID, parseChannelPlaylists, title, destinationDir, prefix)
 	} else if len(userMatches) > 0 {
 		user := userMatches[1]
 		slog.Debug("YouTube user detected", "user", user)
@@ -185,23 +185,40 @@ func parsePlaylist(title, url, destinationDir, prefix string, parseChannelPlayli
 	}
 }
 
-func parseAndWriteChannelPlaylists(channelID string, parseChannelPlaylists bool, title string, destinationDir string, prefix string) {
-	if parseChannelPlaylists {
-		slog.Debug("Parsing channel playlists", "title", title)
+func parseAndWriteChannelPlaylists(url string, channelID string, parseChannelPlaylists bool, title string, destinationDir string, prefix string) {
 
-		// playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
-		// playlistsSection := "playlists"
-		// parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, playlistsSection, playlistRegex)
+	fragmentRegex := regexp.MustCompile(`#([^#]+)$`)
 
+	// Find the match
+	match := fragmentRegex.FindStringSubmatch(url)
+
+	parseVideos := true
+	fragment := ""
+	if len(match) > 1 {
+		fragment = match[1]
+	}
+	slog.Debug("Parsing channel playlists", "title", title)
+
+	if parseChannelPlaylists || strings.Contains(fragment, "p") { //playlists
+		playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
+		playlistsSection := "playlists"
+		playlistsExisted := parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, playlistsSection, playlistRegex)
+		parseVideos = parseVideos && !playlistsExisted
+	}
+	if parseChannelPlaylists || strings.Contains(fragment, "r") { //releases
 		releasesRegex := "\"playlistId\":\"(OL[a-zA-Z0-9_-]{39})\""
 		releasesSection := "releases"
-		parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, releasesSection, releasesRegex)
-	} else {
+		releasesExisted := parseAndWriteChannelPlaylistsForSection(channelID, destinationDir, prefix, title, releasesSection, releasesRegex)
+		parseVideos = parseVideos && !releasesExisted
+	}
+
+	if parseVideos {
 		parseAndWritePlaylists(title, fmt.Sprintf("https://www.youtube.com/feeds/videos.xml?channel_id=%s", channelID), destinationDir, prefix)
 	}
 }
 
-func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir string, prefix string, title string, section string, playlistRegex string) {
+func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir string, prefix string, title string,
+	section string, playlistRegex string) bool {
 	playlistIds := getYoutubePlaylistsForChannel(channelID, section, playlistRegex)
 	playlistMap := make(map[string]string)
 	for _, playlistId := range playlistIds {
@@ -209,11 +226,15 @@ func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir st
 		playlistURL := "https://www.youtube.com/playlist?list=" + playlistId
 		playlistMap[playlistURL] = playlistName
 	}
-	parsePlaylists(playlistMap, destinationDir+"/"+prefix+"/"+title, section, false)
+	if len(playlistMap) > 0 {
+		parsePlaylists(playlistMap, destinationDir+"/"+prefix+"/"+title, section, false)
+		return true
+	} else {
+		return false
+	}
 }
 
 func getYoutubePlaylistsForChannel(channelId string, section string, extractionRegex string) []string {
-	//playlistRegex := "\"playlistId\":\"(PL[a-zA-Z0-9_-]{16,32})\""
 	re, err := regexp.Compile(extractionRegex)
 	if err != nil {
 		fmt.Printf("Error compiling regex: %v\n", err)
