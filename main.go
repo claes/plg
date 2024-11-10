@@ -189,8 +189,6 @@ func parsePlaylist(title, url, destinationDir, prefix string, parseChannelPlayli
 func parseAndWriteChannelPlaylists(url string, channelID string, parseChannelPlaylists bool, title string, destinationDir string, prefix string) {
 
 	fragmentRegex := regexp.MustCompile(`#([^#]+)$`)
-
-	// Find the match
 	match := fragmentRegex.FindStringSubmatch(url)
 
 	parseVideos := true
@@ -224,6 +222,9 @@ func parseAndWriteChannelPlaylistsForSection(channelID string, destinationDir st
 	playlistMap := make(map[string]string)
 	for _, playlistId := range playlistIds {
 		playlistName := getYoutubePlaylistName(playlistId)
+		if len(playlistName) < 1 {
+			playlistName = playlistId
+		}
 		playlistURL := "https://www.youtube.com/playlist?list=" + playlistId
 		playlistMap[playlistURL] = playlistName
 	}
@@ -269,7 +270,7 @@ func getYoutubePlaylistsForChannel(channelId string, section string, extractionR
 }
 
 func getYoutubePlaylistName(playlistId string) string {
-	titleRegex := "<title>(.*)- YouTube</title>"
+	titleRegex := "<title>(.*?)(?:- YouTube)?</title>"
 	re, err := regexp.Compile(titleRegex)
 	if err != nil {
 		slog.Error("Error compiling regex", "regex", re, "error", err)
@@ -294,8 +295,11 @@ func getYoutubePlaylistName(playlistId string) string {
 	for _, match := range matches {
 		if len(match) > 1 {
 			return html.UnescapeString(match[1])
+		} else {
+			slog.Error("Could not find title match for playlist", "url", playlistUrl)
 		}
 	}
+	slog.Error("Could not find title match for playlist, returning", "url", playlistUrl)
 	return ""
 }
 
