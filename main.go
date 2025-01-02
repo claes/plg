@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/xml"
+
 	"bufio"
 	"encoding/json"
 	"flag"
@@ -580,30 +582,7 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 			w.Flush()
 
 			//Info
-			nfo, err := os.Create(nfofile)
-			if err != nil {
-				return err
-			}
-			defer nfo.Close()
-			defer os.Chtimes(nfofile, item.time, item.time)
-
-			w = bufio.NewWriter(nfo)
-			if err != nil {
-				return err
-			}
-
-			tag := strings.Replace(name, "&", "&amp;", -1)
-			tag = strings.Replace(tag, "<", "&lt;", -1)
-			tag = strings.Replace(tag, "<", "&gt;", -1)
-
-			s := fmt.Sprintf("<?xml version='1.0' encoding='utf-8'?>\n<movie>\n<title>%s</title>\n<sorttitle>%s</sorttitle>\n<plot>%s</plot>\n<thumb>%s</thumb>\n<tag>%s</tag>\n</movie>\n",
-				item.title, item.sorttitle, item.description, item.iconUrl, tag)
-			_, err = w.WriteString(s)
-
-			if err != nil {
-				return err
-			}
-			w.Flush()
+			createNFO(nfofile, item.title, item.sorttitle, item.description, item.iconUrl, name, item.time)
 
 			//DMS
 			dms, err := os.Create(dmsfile)
@@ -665,4 +644,46 @@ func writePlaylist(destinationDir string, prefix string, name string, playlist [
 		}
 	}
 	return nil
+}
+
+type NFO struct {
+	XMLName   xml.Name `xml:"movie"`
+	Title     string   `xml:"title"`
+	SortTitle string   `xml:"sorttitle"`
+	Plot      string   `xml:"plot"`
+	Thumb     string   `xml:"thumb"`
+	Tag       string   `xml:"tag"`
+}
+
+func createNFO(nfofile, title, sorttitle, description, iconUrl, tag string, t time.Time) error {
+	nfo, err := os.Create(nfofile)
+	if err != nil {
+		return err
+	}
+	defer nfo.Close()
+
+	defer os.Chtimes(nfofile, t, t)
+
+	movie := NFO{
+		Title:     title,
+		SortTitle: sorttitle,
+		Plot:      description,
+		Thumb:     iconUrl,
+		Tag:       tag,
+	}
+
+	writer := bufio.NewWriter(nfo)
+	encoder := xml.NewEncoder(writer)
+
+	_, err = writer.WriteString(xml.Header)
+	if err != nil {
+		return err
+	}
+
+	err = encoder.Encode(movie)
+	if err != nil {
+		return err
+	}
+
+	return writer.Flush()
 }
